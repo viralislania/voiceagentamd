@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 enum MessageRole { user, agent }
 
 /// A persisted summary of a completed chat session, stored in device cache.
