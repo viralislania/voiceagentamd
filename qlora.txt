@@ -1,0 +1,14 @@
+# QLoRA fine-tuning dependencies for Phase C (AMD MI300X / ROCm)
+#
+# Install with:
+#   pip install -r requirements.txt
+#   pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch torchvision torchaudio
+#   pip install -r requirements/qlora.txt
+#
+# These are separated from requirements.txt because bitsandbytes doesn't have
+# wheels for all platforms (e.g., macOS), so the main demo can run without it.
+
+peft>=0.13.0
+trl>=0.12.0
+accelerate>=1.1.0
+bitsandbytes>=0.44.0

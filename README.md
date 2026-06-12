@@ -1,0 +1,428 @@
+# Banking Voice Agent POC
+
+A conversational banking assistant for Indian contexts (English/Hindi/Hinglish) that handles 5 user journeys: balance inquiries, account statements, deposits, fund transfers with OTP, and complaint registration. Uses LangGraph orchestration, ChromaDB RAG, and Flutter GenUI front-end.
+
+**Stack:** FastAPI mock backend (SQLite) → LangGraph → Gemini 2.0 Flash / Llama-3.1-8B → A2A agent server (SSE) → Flutter UI
+
+---
+
+## Quick Start (5 minutes)
+
+### 1. Install Dependencies
+```bash
+cp .env.example .env
+# Edit .env — add GEMINI_API_KEY (or set LLM_PROVIDER=vllm for local Llama)
+pip install -r requirements.txt
+```
+
+### 2. Seed Database & Build RAG Index
+```bash
+python -m src.backend.seed      # Creates bank.db with sample customers/accounts
+python -m src.rag build         # Embeds docs/ → chroma_db/
+```
+
+### 3. Start Services (4 terminals)
+
+**Terminal 1: Mock Bank API** (port 8000)
+```bash
+uvicorn src.backend.app:app --reload --port 8000
+# GET  /open-banking/v1/accounts — list accounts
+# GET  /open-banking/v1/accounts/{id}/balance — check balance
+# POST /open-banking/v1/payments — submit fund transfer + OTP
+```
+
+**Terminal 2: Agent Server** (port 10002)
+```bash
+python -m src.server
+# A2A SSE endpoint — Flask app receives queries, returns A2UI payloads
+# Runs: classify intent → route → journey handler → A2UI response
+```
+
+**Terminal 3: Interactive Demo** (Jupyter)
+```bash
+jupyter notebook demo.ipynb
+# Tests all 5 journeys: balance, statement, FD, transfer+OTP, complaint, RAG
+```
+
+**Terminal 4 (Optional): Flutter UI**
+```bash
+cd flutter/banking_ui
+flutter run -d macos
+# Mobile/web chat UI with A2A SSE connection to port 10002
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Flutter Client                                  │
+│  (Chat UI + GenUI surface renderer + A2A SSE connection)               │
+└──────────────────────────┬──────────────────────────────────────────────┘
+                           │ SSE to http://localhost:10002
+                           ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    A2A Agent Server (port 10002)                        │
+│  src/server.py — Routes messages → LangGraph → A2UI payloads          │
+│  • Input: ChatMessage (user text + session state)                      │
+│  • Output: A2UI dicts (createSurface, updateComponents) + text         │
+└──────────────────────────┬──────────────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ↓                  ↓                   ↓
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│  LangGraph Flow  │ │   RAG Retrieval  │ │   Tool Calls     │
+│  src/graph.py    │ │   src/rag.py     │ │   src/tools.py   │
+│                  │ │                  │ │                  │
+│ classify intent  │ │ ChromaDB search  │ │ Bank API calls   │
+│ route journey    │ │ Top-3 docs match │ │ (mock via src/   │
+│ fill slots       │ │ source metadata  │ │  backend/)       │
+│ handle OTP       │ │                  │ │                  │
+│ format response  │ │ 1000s vectors    │ │ Open accounts,   │
+│ build A2UI       │ │ on disk          │ │ transfer funds,  │
+│ (basic catalog)  │ │                  │ │ charge fees      │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ↓                  │                   ↓
+┌──────────────────┐       │          ┌──────────────────┐
+│  Bank API (8000) │       │          │    LLM Provider  │
+│  src/backend/    │       │          │                  │
+│                  │       │          │ src/llm.py:      │
+│ FastAPI routes   │       │          │  • gemini-2.0    │
+│ SQLite bank.db   │       │          │  • vllm/Llama    │
+│ (CUST001, etc)   │       │          │  (configurable)  │
+└──────────────────┘       │          └──────────────────┘
+                           ↓
+                ┌──────────────────────┐
+                │   ChromaDB Store     │
+                │ src/backend/chroma_db│
+                │                      │
+                │ banking_docs         │
+                │ collection           │
+                │ (KYC, fees, FAQs)    │
+                └──────────────────────┘
+```
+
+---
+
+## File Structure
+
+```
+voiceagent/
+├── .env.example                # Copy to .env, add GEMINI_API_KEY
+├── requirements.txt            # Core dependencies
+├── requirements/
+│   └── qlora.txt               # Phase C fine-tuning (optional)
+│
+├── demo.ipynb                  # Interactive demo (all 5 journeys)
+│
+├── seed_data/                  # 77 hand-written examples
+│   ├── classify_seeds.jsonl    # Intent + slot classification
+│   ├── disambiguation_seeds.jsonl
+│   ├── slot_filling_seeds.jsonl
+│   └── formatting_rag_seeds.jsonl
+│
+├── data/                       # Generated by src/augment.py
+│   ├── train.jsonl
+│   └── eval.jsonl
+│
+├── flutter/banking_ui/         # Flutter GenUI client (moved to root)
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── chat_screen.dart    # A2A SSE + Surface integration
+│   │   └── catalog/            # A2UI catalog wrappers
+│   │       ├── banking_catalog.dart
+│   │       └── catalog.dart
+│   └── pubspec.yaml
+│
+└── src/
+    ├── config.py               # Settings (hot-reload via .env)
+    ├── models.py               # Pydantic models (intent, slots, tools, A2UI)
+    ├── state.py                # AgentState TypedDict
+    ├── intents.py              # INTENT_REGISTRY (8 intents)
+    ├── llm.py                  # LLM abstraction (gemini | vllm)
+    ├── rag.py                  # ChromaDB retrieval
+    ├── tools.py                # TOOL_REGISTRY + tool functions
+    ├── a2ui.py                 # A2UI builders + a2ui-agent-sdk wrappers
+    ├── graph.py                # LangGraph: classify → route → journey → response
+    ├── server.py               # A2A agent server (port 10002)
+    │
+    ├── backend/
+    │   ├── app.py              # FastAPI (port 8000)
+    │   ├── seed.py             # SQLite seeding
+    │   ├── schema.sql          # DB schema
+    │   ├── failure_codes.py    # Error mappings
+    │   ├── bank.db             # (gitignored)
+    │   ├── chroma_db/          # ChromaDB persistent store
+    │   └── docs/               # Markdown docs for RAG
+    │       ├── kyc_requirements.md
+    │       ├── how_to_open_fd.md
+    │       ├── fund_transfer_neft_vs_imps.md
+    │       └── (7 more...)
+    │
+    ├── augment.py              # Seed augmentation (Phase B)
+    └── evaluate.py             # Dataset evaluation
+```
+
+---
+
+## The 5 Journeys
+
+| Journey | Pattern | Key Flow |
+|---------|---------|----------|
+| **UC1: Balance & Statement** | Structured retrieval | Tool call → format numbers → A2UI card + drill-down |
+| **UC2: Open FD/RD** | Transactional (multi-turn) | Slot fill (product → amount → tenure) → confirm → A2UI |
+| **UC3: Knowledge RAG** | Knowledge retrieval | Classify as RAG → retrieve from docs → ground answer |
+| **UC4: Fund Transfer + OTP** | Transactional + SCA | Slot fill → consent → OTP prompt → verify → execute |
+| **UC5: Complaint** | Action + insight extraction | Classify issue → check fixability → either auto-fix or raise ticket |
+
+Each journey is resumable: nodes set `pending_slot` or `pending_action`, client re-sends accumulated state, and the graph resumes at the correct step.
+
+---
+
+## Development Commands
+
+### Backend Commands
+
+```bash
+# Start mock bank API
+uvicorn src.backend.app:app --reload --port 8000
+
+# Seed database (creates CUST001, ACC001/002, TXN001-010)
+python -m src.backend.seed
+
+# Reset database
+rm src/backend/bank.db && python -m src.backend.seed
+```
+
+### RAG Commands
+
+```bash
+# Build ChromaDB index from docs/
+python -m src.rag build
+# → Creates src/backend/chroma_db/banking_docs collection
+
+# Query the index (CLI)
+python -m src.rag query "KYC requirements kya hain?"
+# → Returns top-3 matches with [score] source text
+
+# Reset RAG index
+rm -rf src/backend/chroma_db && python -m src.rag build
+```
+
+### Agent Server
+
+```bash
+# Start A2A agent server
+python -m src.server
+# → Listens on http://localhost:10002
+# → Receives ChatMessage, returns A2UI payloads
+
+# Set LLM provider
+LLM_PROVIDER=gemini python -m src.server  # Gemini 2.0 Flash (default)
+LLM_PROVIDER=vllm python -m src.server    # vLLM-served Llama-3.1-8B
+VLLM_URL=http://localhost:8001/v1 python -m src.server
+```
+
+### Demo & Evaluation
+
+```bash
+# Interactive demo (all 5 journeys)
+jupyter notebook demo.ipynb
+
+# Evaluate intent accuracy (baseline against base model)
+EVAL_MODEL=Qwen/Qwen2.5-7B-Instruct python -m src.evaluate
+
+# Evaluate against fine-tuned model
+EVAL_MODEL=out/bank-8b-merged python -m src.evaluate
+EVAL_FILE=data/eval.jsonl python -m src.evaluate
+```
+
+### Dataset Augmentation (Phase B)
+
+```bash
+# Expand seed_data/ → data/train.jsonl + data/eval.jsonl (6× paraphrase)
+AUG_BASE_URL=http://localhost:8001/v1 AUG_MODEL=Qwen/Qwen2.5-7B-Instruct python -m src.augment
+
+# Custom seed file
+AUG_FILE=seed_data/classify_seeds.jsonl python -m src.augment
+```
+
+### Fine-tuning (Phase C, optional)
+
+```bash
+# Install fine-tuning dependencies (AMD MI300X / ROCm)
+pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch torchvision torchaudio
+pip install -r requirements/qlora.txt
+
+# QLoRA fine-tune (not yet implemented)
+python train_qlora.py
+# → Outputs: out/bank-8b-lora/
+
+# Merge LoRA + quantize
+python -c "from peft import AutoPeftModelForCausalLM; m = AutoPeftModelForCausalLM.from_pretrained('out/bank-8b-lora'); m = m.merge_and_unload(); m.save_pretrained('out/bank-8b-merged')"
+
+# Serve merged model
+vllm serve out/bank-8b-merged --quantization awq --max-model-len 4096 --port 8001
+```
+
+### Flutter UI
+
+```bash
+# Terminal 1-3: start backend, agent, demo (see Quick Start)
+
+# Terminal 4: Run Flutter app
+cd flutter/banking_ui
+flutter pub get
+flutter run -d macos           # macOS
+flutter run -d ios             # iOS (requires Xcode)
+flutter run -d android         # Android (requires Android Studio)
+
+# Hot reload during development: press 'r' in terminal
+# Full restart: press 'R'
+```
+
+---
+
+## Configuration
+
+All settings read from `.env` (hot-reload via watchfiles):
+
+```bash
+# LLM provider
+LLM_PROVIDER=gemini          # "gemini" or "vllm"
+GEMINI_API_KEY=...           # Required for Gemini
+VLLM_URL=http://localhost:8001/v1
+VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct
+
+# Backend
+BACKEND_URL=http://localhost:8000/open-banking/v1
+DB_PATH=src/backend/bank.db
+
+# RAG
+RAG_DOCS_GLOB=src/backend/docs/*.md
+RAG_DB_PATH=src/backend/chroma_db
+RAG_MODEL=intfloat/multilingual-e5-small
+RAG_TOP_K=3
+
+# Agent server
+AGENT_HOST=localhost
+AGENT_PORT=10002
+```
+
+---
+
+## Key Constraints
+
+- **Never invent numbers** — every figure in a formatting answer must come from the tool result
+- **Strict JSON output** for classify/slot/action seeds — consistency > volume
+- **OTP/SCA loop** — don't advance the graph on a 401 from POST /payments; keep `pending_action=await_otp`
+- **Progressive disclosure** — emit compact summary card first; emit transaction list only when tapped (drill-down)
+- **No optimistic success** for money movement — wait for backend `success` envelope
+- **Basic catalog only** — compose all UIs from: Text, Card, Column, Row, Button, Icon, Divider, ChoicePicker, Slider, TextField, List
+
+---
+
+## Architecture Decisions
+
+### A2UI Protocol (src/a2ui.py)
+- Uses `a2ui-agent-sdk` for source-of-truth CATALOG_ID
+- Only basic catalog primitives (no custom components)
+- `to_parts()` wraps builders into mime-tagged a2a Parts
+
+### A2A Transport (src/server.py)
+- SSE transport (not WebSocket) for simplicity
+- Session state stored in client-side `DataPart` (slots, pending_action)
+- AgentCard advertises A2UI v0.9 extension to client
+
+### RAG (src/rag.py)
+- ChromaDB for persistent vector storage (no separate files)
+- Only embedder cached (~200MB); collection fetched fresh each query
+- Batch-inserts embeddings on build (handles 1000s docs efficiently)
+
+### Graph (src/graph.py)
+- LangGraph for orchestration (deterministic, inspectable, resumable)
+- Resumable journeys: client re-sends slots → graph resumes at pending_slot
+- Single source of truth: INTENT_REGISTRY in src/intents.py
+
+---
+
+## Troubleshooting
+
+### "ModuleNotFoundError: No module named 'pydantic_settings'"
+```bash
+pip install -r requirements.txt
+```
+
+### "ChromaDB collection 'banking_docs' not found"
+```bash
+python -m src.rag build
+```
+
+### "Connection refused: http://localhost:8000"
+```bash
+# Make sure backend is running:
+uvicorn src.backend.app:app --reload --port 8000
+```
+
+### "Connection refused: http://localhost:10002"
+```bash
+# Make sure agent server is running:
+python -m src.server
+```
+
+### "GEMINI_API_KEY not set"
+```bash
+# Edit .env and add your API key, or use vLLM:
+LLM_PROVIDER=vllm VLLM_URL=http://localhost:8001/v1 python -m src.server
+```
+
+### ChromaDB disk space
+ChromaDB stores embeddings on disk. With 10k paragraphs (~1KB each) + embeddings (~2KB per doc), expect ~30-50MB.
+```bash
+du -sh src/backend/chroma_db
+```
+
+---
+
+## Testing Checklist
+
+- [ ] **UC1** (balance): `"mera balance kya hai?"` → balance card + drill-down to transactions
+- [ ] **UC2** (FD): `"I want to open a fixed deposit"` → multi-turn slot fill → confirmation card
+- [ ] **UC3** (RAG): `"KYC documents kya chahiye?"` → quoted answer from docs
+- [ ] **UC4** (transfer): `"Transfer ₹2000 to Rahul"` → consent → OTP prompt → success card
+- [ ] **UC5** (complaint): `"Payment failed"` → classify issue → suggest fix or raise ticket
+- [ ] **Multi-lingual**: Test EN, HI, and Hinglish inputs
+- [ ] **OTP failure path**: Wrong OTP (000000) should NOT advance graph
+- [ ] **Flutter UI**: Chat → tap drill-down → tap button → response renders
+
+---
+
+## Further Reading
+
+- **CLAUDE.md** — Technical architecture for developers editing code
+- **seed_data/README.md** — Dataset creation and augmentation
+- **demo.ipynb** — Interactive walkthrough of all 5 journeys
+- **A2UI spec** — https://a2ui.org/specification/v0_9/
+- **LangGraph docs** — https://langchain-ai.github.io/langgraph/
+- **ChromaDB docs** — https://docs.trychroma.com/
+
+---
+
+## Build Phases
+
+| Phase | Status | What | Time |
+|-------|--------|------|------|
+| **A** | ✅ Done | Backend + LangGraph + zero-shot baseline | 1 week |
+| **B** | ✅ Done | Seed dataset (77 examples) + augmentation | 1 week |
+| **C** | ⏳ TODO | QLoRA fine-tune on AMD MI300X/ROCm | 2 weeks |
+| **D** | ⏳ TODO | Merge + 4-bit quantize + re-evaluate | 1 week |
+| **E** | ✅ Done | Flutter GenUI wiring for all 5 journeys | 1 week |
+| **F** | ⏳ TODO | IndicConformer ASR voice front-end | 2 weeks |
+| **G** | ⏳ TODO | Optional: HingBERT intent gatekeeper + MCP | TBD |
+
+---
+
+**Questions?** See CLAUDE.md for technical decisions or open an issue.

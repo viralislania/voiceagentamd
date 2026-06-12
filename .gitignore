@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+pip-wheel-metadata/
+__pypackages__/
+./venv312/*
+.venv*/
+venv/
+env/
+ENV/
+.Python
+pyvenv.cfg
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.mypy_cache/
+.pytest_cache/
+.ropeproject/
+.pytest_cache/
+.venv/*
+*.sqlite3
+bank.db
+*.db
+*.db-journal
+*.log
+
+# FastAPI / server
+instance/
+*.sqlite
+
+# Dart / Flutter
+.dart_tool/
+.package_config.json
+.packages
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+build/
+/.dart_tool/
+/.pub-cache/
+
+# Android
+android/.gradle/
+android/local.properties
+android/*.iml
+android/.idea/
+
+# iOS
+ios/Pods/
+ios/Runner.xcworkspace/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# macOS
+.DS_Store
+
+# Logs, coverage, and CI
+coverage.xml
+coverage/
+logs/
+*.log
+
+# Environment / secrets
+.env
+.env.*
+.env.local
+.env.production
+
+# Misc
+.vagrant/
+*.key
+*.pem
+.claude/*
+venv312/
+chroma_db/
+claude.md
