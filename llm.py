@@ -31,7 +31,7 @@ def _gemini(messages: list[dict], json_mode: bool, temperature: float) -> str:
         raise EnvironmentError("GEMINI_API_KEY not set")
     genai.configure(api_key=api_key)
 
-    # gemini-2.0-flash is the current fast model; fall back to gemini-1.5-flash
+    # gemini-3.5-flash is the current fast model; fall back to gemini-1.5-flash
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     model = genai.GenerativeModel(model_name)
 

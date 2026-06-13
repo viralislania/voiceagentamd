@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # LLM provider
     llm_provider: str = "gemini"          # "gemini" | "vllm"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.5-flash"
     vllm_url: str = "http://localhost:8001/v1"
     vllm_model: str = "meta-llama/Llama-3.1-8B-Instruct"
 

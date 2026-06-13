@@ -148,9 +148,11 @@ def classify(state: AgentState) -> AgentState:
                 "done": False}   # keep journey alive; slots/pending_action unchanged
 
     result = llm_classify(state["user_msg"], INTENTS, history=state.get("slots"))
+    # account_id is session-managed (DEFAULT_ACCOUNT); never accept it from the LLM
+    clean_slots = {k: v for k, v in result.slots.items() if k != "account_id"}
     return {**state,
             "intent": result.intent,
-            "slots":  {**state.get("slots", {}), **result.slots}}
+            "slots":  {**state.get("slots", {}), **clean_slots}}
 
 
 def blocked_response(state: AgentState) -> AgentState:

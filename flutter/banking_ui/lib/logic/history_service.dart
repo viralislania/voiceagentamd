@@ -6,7 +6,7 @@ import 'models.dart';
 
 class HistoryService {
   static const _key = 'conversation_history_v1';
-  static const _max = 30;
+  static const _max = 5;  // Keep last 5 conversations only
 
   Future<List<ConversationRecord>> load() async {
     final prefs = await SharedPreferences.getInstance();

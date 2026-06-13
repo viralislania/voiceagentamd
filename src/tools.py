@@ -7,8 +7,8 @@ from __future__ import annotations
 import requests
 
 from src.config import settings
-
-
+import logging
+logger = logging.getLogger(__name__)
 def _get(path: str, **params) -> dict:
     r = requests.get(
         f"{settings.backend_url}{path}",
@@ -39,6 +39,7 @@ def get_statement(
     rail:      str | None = None,
     detailed:  bool = False,
 ) -> dict:
+    logger.info(f"get_statement: account_id={account_id}, from_date={from_date}, to_date={to_date}, category={category}, rail={rail}, detailed={detailed}")
     return _post("/accounts/transactions/query", {
         "account_id": account_id, "from_date": from_date,
         "to_date": to_date, "category": category,

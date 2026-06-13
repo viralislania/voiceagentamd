@@ -38,22 +38,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _records = records);
   }
 
-  void _openChat({String? message, String? contextLabel}) {
+  void _openChat({String? message, String? contextLabel, bool isVoice = false}) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ChatScreen(
         initialMessage:        message,
         contextLabel:          contextLabel,
         accountLabel:          _store.account?.displayLabel,
-        onConversationStarted: (firstMsg) => _saveRecord(firstMsg, contextLabel),
+        onConversationStarted: (firstMsg) => _saveRecord(firstMsg, contextLabel, isVoice),
       ),
     ));
   }
 
-  Future<void> _saveRecord(String firstMsg, String? contextLabel) async {
+  Future<void> _saveRecord(String firstMsg, String? contextLabel, bool isVoice) async {
     final record = ConversationRecord(
       title:          firstMsg.length > 50 ? '${firstMsg.substring(0, 47)}…' : firstMsg,
       subtitle:       contextLabel ?? 'Chat',
       timestamp:      DateTime.now(),
+      isVoice:        isVoice,
       initialMessage: firstMsg,
       contextLabel:   contextLabel,
     );
@@ -65,12 +66,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: BankingTheme.surfaceBackground,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openChat(),
-        backgroundColor: BankingTheme.brandPrimary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.chat_bubble_outline_rounded),
-        label: const Text('Ask anything'),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: () => _openChat(isVoice: true),
+            backgroundColor: BankingTheme.brandPrimary,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.mic_rounded),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            onPressed: () => _openChat(),
+            backgroundColor: BankingTheme.brandPrimary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('Chat'),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Observer(
@@ -82,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
               slivers: [
                 SliverToBoxAdapter(child: _GreetingCard(store: _store)),
                 SliverToBoxAdapter(child: _BalanceCard(store: _store, onTap: _openChat)),
-                SliverToBoxAdapter(child: _QuickActions(onTap: _openChat)),
                 if (_records.isNotEmpty) ...[
                   SliverToBoxAdapter(child: _RecentHeader()),
                   SliverList(
@@ -91,7 +103,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       childCount: _records.length,
                     ),
                   ),
-                ],
+                ] else
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Center(
+                        child: Text(
+                          'Start a conversation\nusing the chat or voice button',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: BankingTheme.contentSecondary,
+                              ),
+                        ),
+                      ),
+                    ),
+                  ),
                 const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
             );
@@ -255,50 +281,6 @@ class _HideButton extends StatelessWidget {
   }
 }
 
-// ── Quick actions ─────────────────────────────────────────────────────────────
-
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.onTap});
-  final void Function({String? message, String? contextLabel}) onTap;
-
-  static const _actions = [
-    ('Check balance', 'Mera balance kya hai?',         'Balance'),
-    ('Send money',    'Send money',                    'Transfer money'),
-    ('Open FD',       'Mujhe ek FD kholni hai',        'Open deposit'),
-    ('Statement',     'Last week kitna kharch hua?',   'Spends'),
-    ('Help & FAQ',    'FD ki minimum duration kya hai?', 'Ask anything'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Quick actions',
-              style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w600,
-                color: BankingTheme.contentPrimary,
-              )),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (label, msg, ctx) in _actions)
-                ActionChip(
-                  label: Text(label),
-                  onPressed: () => onTap(message: msg, contextLabel: ctx),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Recent conversations ──────────────────────────────────────────────────────
 
 class _RecentHeader extends StatelessWidget {
@@ -351,8 +333,10 @@ class _HistoryTile extends StatelessWidget {
                 color: BankingTheme.surfaceSubtle,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.chat_bubble_outline_rounded,
-                  size: 20, color: BankingTheme.contentSecondary),
+              child: Icon(
+                record.isVoice ? Icons.mic_rounded : Icons.chat_bubble_outline_rounded,
+                size: 20, color: BankingTheme.contentSecondary,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
